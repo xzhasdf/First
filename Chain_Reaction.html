@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="zh">
+
+	<head>
+		<meta charset="UTF-8">
+		<title>Chain Reaction</title>
+		<link rel="shortcut icon " href="favicon.ico" type="image/x-icon ">
+		<style>
+			body {
+				background: rgb(51, 51, 51);
+			}
+			
+			#myCanvas {
+				background: rgb(51, 51, 51);
+				display: block;
+				margin: 35px auto;
+			}
+			#btnBox {
+				position: fixed;
+    				z-index: 50;
+			    top:51%;
+			    left: 41%;
+			    width: 350px;
+   				height: 120px;
+   				background: #cceaa6;
+   				border: 5px ridge #a8dc65;
+   				border-radius: 5px;
+			}
+			#btnBox p{
+				text-align: center;
+				font-size: 1.5rem;
+				font-family: Baoli SC;
+				margin: 12px auto;
+				color: #297a22;
+				-webkit-user-select: none;
+			}
+			#btn {
+				margin: auto;
+				background: #a8dc65;
+				color: #297a22;
+   				border: 1px solid #297a22;
+   				border-radius: 5px;
+   				width: 300px;
+   				height: 40px;
+   				font-size: 1.5rem;
+   				outline: none;
+   				text-align: center;
+   				line-height: 40px;
+   				box-shadow: 1px 1px 10px #297a22;
+   				-webkit-user-select: none;
+   				font-family: STXingkai;
+   				letter-spacing: 4px;
+			}
+			#btn:active {
+				box-shadow: 1px 1px 10px #297a22 inset;
+			}
+			#historyScoreBox {
+				position: absolute;
+				top: 50px;
+				right: 280px;
+				color: white;
+				font-family: Baoli SC;
+				font-size: 2rem;
+				text-align: center;
+			}
+			input {
+				background: rgb(51, 51, 51);
+				width: 160px;
+				height: 40px;
+				color: white;
+				font-size: 1.5rem;
+				border: none;
+				text-align: right;
+			}
+		</style>
+	</head>
+
+	<body>
+		<canvas id="myCanvas" width="900" height="810"></canvas>
+		<img src="pointerball.png" id="img" style="display: none;">
+		<div id="btnBox">
+			<p id="p">在40个球中碰到25个球</p>
+			<div id="btn">Play!</div>
+		</div>
+		<div id="historyScoreBox">
+			历史分数:
+			<br>
+			<input type="text" id="s1" readonly="readonly" value="0"> 分<br>
+			<input type="text" id="s2" readonly="readonly" value="0"> 分<br>
+			<input type="text" id="s3" readonly="readonly" value="0"> 分<br>
+		</div>
+	</body>
+	<script>
+		var mc = document.getElementById("myCanvas");
+		var ctx = mc.getContext('2d');
+		var img = document.getElementById("img");
+		var btnBox = document.getElementById("btnBox");
+		var btn = document.getElementById("btn");
+		var ss = document.getElementsByTagName("input"); //获取所有历史分数显示input框
+		var mx, my; //鼠标位置
+		var ballArr = []; //小球数组  
+		var circleArr = []; //碰撞圆数组
+		var scoreArr = []; //分数数组
+		var num = 40	; //小球数目
+		var score = 0; //得分
+		var gameTimer; //游戏计时器
+		
+		//坐标系
+		function coord() {
+			//x轴
+			for(var i = 0; i <= mc.width; i += 30) {
+				ctx.beginPath();
+				ctx.moveTo(i, 0);
+				ctx.lineTo(i, mc.height);
+				ctx.lineWidth = 0.5;
+				ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+				ctx.stroke();
+			}
+			//y轴
+			for(var j = 0; j <= mc.height; j += 30) {
+				ctx.beginPath();
+				ctx.moveTo(0, j);
+				ctx.lineTo(mc.width, j);
+				ctx.lineWidth = 0.5;
+				ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+				ctx.stroke();
+			}
+		}
+
+		//随机数函数
+		function rd(x, y) {
+			return Math.floor(Math.random() * (y - x + 1) + x);
+		}
+
+		//封装移动的小球类
+		/*
+		 * x,y: 圆心位置
+		 * vx,vy: 水平和垂直速度
+		 * bc: 背景色
+		 */
+		function Ball(x, y, vx, vy, bc) {
+			this.x = x;
+			this.y = y;
+			this.vx = vx;
+			this.vy = vy;
+			this.r = 10; //半径固定
+			this.bc = bc;
+		}
+		Ball.prototype.move = function() {
+			//碰壁,速度置负
+			if(this.x < this.r || this.x > mc.width - this.r) {
+				this.vx = -this.vx;
+			}
+			if(this.y < this.r || this.y > mc.height - this.r) {
+				this.vy = -this.vy;
+			}
+			//改变圆心的位置
+			this.x += this.vx;
+			this.y += this.vy;
+			//绘制小球
+			ctx.beginPath();
+			ctx.arc(this.x, this.y, this.r, 0, 2 * Math.PI);
+			ctx.fillStyle = this.bc;
+			ctx.fill();
+		}
+
+		//封装创建小球函数
+		var minX = 15,
+			maxX = 800; //小球生成水平范围
+		var minY = 15,
+			maxY = 705; //小球生成垂直范围
+		function createBall() {
+			for(var i = 0; i < num; i++) {
+				var x = rd(minX, maxX);
+				var y = rd(minY, maxY);
+				//随机判断速度取值
+				var vx = rd(-2, 2);
+				var vy = rd(-1, 1);
+				//规避0速度
+				if(vx == 0) {
+					vx++;
+				}
+				if(vy == 0) {
+					vy--;
+				}
+				var bc = 'rgb(' + rd(30, 255) + ',' + rd(30, 255) + ',' + rd(30, 255) + ')'; //设置小球背景色
+				var ball = new Ball(x, y, vx, vy, bc); //生成小球
+				ballArr.push(ball); //将生成的小球放进小球数组
+			}
+		}
+
+		//绘制鼠标位置图片
+		function drawImg() {
+			ctx.beginPath();
+			ctx.drawImage(img, mx - 97, my - 97); //图片宽高194px.mx,my是在图片左上角,减去97鼠标位于图片中心
+		}
+		
+		//封装碰撞圆类
+		/*
+		 * x,y: 碰撞圆圆心坐标
+		 * bc: 背景色
+		 */
+		function Circle(x, y, bc,order) {
+			this.order = order; //圆碰撞顺序.鼠标位置圆为1
+			this.x = x;
+			this.y = y;
+			this.r = 0; //初始半径0
+			this.bc = bc; //背景色
+			this.time = 1; //圆消失计时
+			
+		}
+		Circle.prototype.draw = function() {
+			ctx.beginPath();
+			//圆从小到大的动画效果,圆半径固定50
+			if(this.r < 50) {
+				this.r += 2;
+			} else if(this.r >= 50) {
+				this.r = 50;
+			}
+			ctx.arc(this.x, this.y, this.r, 0, 2 * Math.PI);
+			ctx.fillStyle = this.bc;
+			ctx.fill();
+		}
+
+		function createCircle(x, y, bc, order) {
+			var circle = new Circle(x, y, bc, order); //实例化碰撞圆
+			circleArr.push(circle); //将产生的碰撞圆添加进数组
+
+		}
+
+		//碰撞检测
+		function collision() {
+			for(var i = 0; i < ballArr.length; i++) { //外层小球
+				for(var j = 0; j < circleArr.length; j++) { //内层碰撞圆
+					var b = ballArr[i]; //当前碰撞的小球
+					var c = circleArr[j]; //当前碰撞到的圆
+					//碰撞检测
+					//计算圆心距
+					var dis = Math.sqrt(Math.pow((b.x - c.x), 2) + Math.pow((b.y - c.y), 2));
+					if(dis <= b.r + c.r) {
+						console.log(c)
+						var temp = c.order + 1; //依据所碰撞到的圆设置碰撞的顺序
+						scoreCale(c); //分数函数
+						createCircle(b.x, b.y, b.bc, temp); //生成碰撞圆
+						ballArr.splice(i, 1);
+						i--;
+						break;
+					}
+				}
+			}
+		}
+			
+		//分数计算函数
+		function scoreCale(a) {
+			score += Math.pow(2,a.order - 1) * 100;
+		}
+		
+		//历史分数函数
+		function historyScore() {
+			//将已有的历史分数添加进分数数组
+			for(var i = 0; i < ss.length; i++) {
+				scoreArr.push(Number(ss[i].value));
+			}
+			scoreArr.push(score); //将当前分数添加进数组
+			//冒泡排序
+			for(var i = 0; i < scoreArr.length; i++) {
+				for(var j = 0; j < scoreArr.length - i - 1; j++) {
+					if(scoreArr[j] < scoreArr[j + 1]) {
+						var temp = scoreArr[j];
+						scoreArr[j] = scoreArr[j + 1];
+						scoreArr[j + 1] = temp;
+					}
+				}
+			}
+			//删除尾部最小的数字
+			scoreArr.pop();
+			console.log(scoreArr);
+			//循环将新的分数显示在input框内
+			for(var i = 0; i < ss.length; i++) {
+				for(var j = 0; j < scoreArr.length; j++) {
+					if(i == j) {
+						ss[i].value = scoreArr[j];
+					}
+				}
+			}
+		}
+		
+		//鼠标移动事件
+		var flag = 1; //判断鼠标是否点击 1:未点击 0:已点击
+		function mouseEvent() {
+			mc.onmousemove = function() {
+				var e = event || window.event;
+				//鼠标位置
+				mx = e.pageX - mc.offsetLeft;
+				my = e.pageY - mc.offsetTop;
+			}
+			//鼠标点击事件
+			mc.onmousedown = function() {
+				if(flag == 1) {
+					var e = event || window.event;
+					//鼠标位置
+					mx = e.pageX - mc.offsetLeft;
+					my = e.pageY - mc.offsetTop;
+					//鼠标位置实例化圆
+					var circle = new Circle(mx, my, 'gray', 1);
+					circleArr.push(circle);
+					flag = 0; //开关关闭
+				}
+			}
+		}
+		
+
+		//游戏运行函数
+		function game() {
+			//添加定时器使小球移动
+			gameTimer = setInterval(function() {
+				ctx.clearRect(0, 0, mc.width, mc.height); //清除画布
+				for(var i = 0; i < ballArr.length; i++) {
+					ballArr[i].move(); //调用小球移动函数
+				}
+				//掉用图片绘制,仅在未点击是时候执行
+				if(flag == 1) {
+					drawImg();
+				}
+				collision(); //碰撞检测
+				//循环绘制碰撞圆
+				for(var j = 0; j < circleArr.length; j++) {
+					circleArr[j].draw(); //绘制碰撞圆
+					circleArr[j].time++; //计时累加
+					//当time到达一定时间后,将圆从数组中删除
+					if(circleArr[j].time == 180) {
+						circleArr.splice(j, 1);
+						j--;
+					}
+					//调用结束函数,符合条件后延迟20ms执行,保证画面中所有圆消失
+					if(circleArr.length == 0) {
+						setTimeout(function() {
+							endGame(); //调用结束函数
+						},20);
+					}
+				}
+				//绘制所碰到的球的数量
+				ctx.beginPath();
+				ctx.fillStyle = 'white';
+				ctx.font = '16px Yahei';
+				ctx.fillText('碰到了' + (num - ballArr.length) + '个球',80,60);
+				ctx.fill();
+				//绘制得分
+				ctx.beginPath();
+				ctx.fillStyle = 'white';
+				ctx.font = '16px Yahei';
+				ctx.fillText('得分: ' + score,730,60);
+				ctx.fill();
+				coord(); //绘制坐标系
+			}, 20);
+		}
+		
+		//开始页面
+		function startPage() {
+			btnBox.style.display = 'block';
+			ctx.clearRect(0,0,900,810); //清空画面
+			coord();
+			//游戏标题绘制
+			ctx.beginPath();
+			ctx.font = '72px Zapfino';
+			ctx.fillStyle = 'white';
+			ctx.fillText('Chain Reaction',mc.width / 2 - 360,mc.height / 2 - 50);
+			ctx.fill();
+			//点击按钮开始
+			btn.onclick = function() {
+				createBall();
+				mouseEvent();
+				game();
+				btnBox.style.display = 'none';
+			}
+		}
+		startPage();
+		
+		//结束页面
+		function endPage() {
+			ctx.beginPath();
+			ctx.font = '50px STXingkai';
+			ctx.fillStyle = '#a8dc65';
+			ctx.fillText('得分: ' + score, 340, 400);
+			ctx.fillText('点击任意位置重新开始', 200, 500);
+		}
+		
+		//结束函数
+		function endGame() {
+			clearInterval(gameTimer); //清除定时器
+			//判断是否过关
+			if(num - ballArr.length >= 25) {
+				//过关页面
+				endPage()
+				ctx.fillText('You Win!', 370, 300);
+				ctx.fill();
+				historyScore();
+				//重新开始
+				mc.onmousedown = function() {
+					startPage();
+				}
+			} else {
+				//未过关页面
+				endPage();
+				ctx.fillText('You Lose!', 370, 300);
+				ctx.fill();
+				//重新开始
+				mc.onmousedown = function() {
+					startPage();
+				}
+			}
+			flag = 1; //打开鼠标事件开关
+			score = 0; //分数初始化
+			ballArr = []; //重置小球数组
+			scoreArr = []; //重置分数数组
+		}
+	</script>
+</html>
